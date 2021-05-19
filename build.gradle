@@ -1,0 +1,185 @@
+apply plugin: 'java-library'
+
+jar.enabled = false
+
+buildscript {
+    repositories {
+        maven { url NEXUS_PUBLIC_REPO_URL }
+    }
+    dependencies {
+        classpath("org.springframework.boot:spring-boot-gradle-plugin:$SPRING_BOOT_VERSION")
+    }
+}
+
+subprojects {
+    apply plugin: 'java-library'
+    apply plugin: 'org.springframework.boot'
+    apply plugin: 'io.spring.dependency-management'
+
+    group = 'com.build'
+    version = new File("${projectDir.getAbsolutePath()}${File.separator}..${File.separator}VERSION").text.trim()
+    sourceCompatibility = 1.8
+
+    buildscript {
+        ext {
+            //commit
+            commit = 'git rev-parse --short -q HEAD'.execute().text.trim()
+            release = project.hasProperty('release')
+            //docker image
+            dockerImageName = project.findProperty('docker.image.name') ?: "${project.group}/${project.name}"
+            dockerImageTag = project.findProperty('docker.image.tag') ?: 'latest'
+            //Spring
+            springBootVersion = SPRING_BOOT_VERSION
+            springCloudVersion = SPRING_CLOUD_VERSION
+            //gradle-docker
+            gradleDockerVersion = '0.22.2'
+            //commons
+            commonsLang3Version = '3.11'
+            commonsPool2Version = '2.9.0'
+            commonsCollectionsVersion = '3.2.2'
+            commonsCodecVersion = '1.15'
+            commonsIoVersion = '2.8.0'
+            //vfs
+            commonsVfs2Version = '2.7.0'
+            httpclientVersion = '4.5.13'
+            commonsNetVersion = '3.7.2'
+            jschVersion = '0.1.55'
+            //linq
+            linqVersion = '5.0.0'
+            //json
+            fastjsonVersion = '1.2.76'
+            //数据库
+            mysqlVersion = '8.0.23'
+            druidVersion = '1.2.5'
+            mybatisPlusBootStarterVersion = '3.4.2'
+            //文档
+            knife4jSpringBootStarterVersion = '3.0.2'
+        }
+        repositories {
+            maven { url NEXUS_PUBLIC_REPO_URL }
+        }
+        dependencies {
+            classpath("org.springframework.boot:spring-boot-gradle-plugin:$springBootVersion")
+            classpath("gradle.plugin.com.palantir.gradle.docker:gradle-docker:$gradleDockerVersion")
+        }
+    }
+
+    repositories {
+        maven { url NEXUS_PUBLIC_REPO_URL }
+    }
+
+    dependencyManagement {
+        imports {
+            mavenBom "org.springframework.cloud:spring-cloud-dependencies:$springCloudVersion"
+        }
+    }
+
+    dependencies {
+        //==运行时==
+        api 'org.slf4j:jul-to-slf4j'
+        api 'org.slf4j:jcl-over-slf4j'
+        api 'org.slf4j:log4j-over-slf4j'
+        api 'ch.qos.logback:logback-classic'
+        //==编译时==
+        compileOnly "org.projectlombok:lombok"
+        annotationProcessor "org.projectlombok:lombok"
+        annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+        //==测试时==
+        testImplementation('org.springframework.boot:spring-boot-starter-test') {
+            exclude group: 'org.junit.vintage', module: 'junit-vintage-engine'
+        }
+        testImplementation "org.openjdk.jmh:jmh-core:+"
+        testImplementation "org.openjdk.jmh:jmh-generator-annprocess:+"
+        testImplementation "org.projectlombok:lombok"
+        testAnnotationProcessor "org.projectlombok:lombok"
+    }
+
+    configurations {
+        //==排除被 other to slf4j替代包==
+        compile.exclude module: 'spring-jcl'
+        compile.exclude module: 'commons-logging'
+        compile.exclude module: 'log4j-core'
+        compile.exclude module: 'log4j'
+
+        //==排除 slf4j to other 包==
+        compile.exclude module: 'slf4j-jcl'
+        compile.exclude module: 'slf4j-jdk14'
+        compile.exclude module: 'slf4j-log4j12'
+        compile.exclude module: 'slf4j-simple'
+        compile.exclude module: 'slf4j-nop'
+
+        //==排序 netty 独立包==
+        compile.exclude module: 'netty-buffer'
+        compile.exclude module: 'netty-codec'
+        compile.exclude module: 'netty-common'
+        compile.exclude module: 'netty-handler'
+        compile.exclude module: 'netty-resolver'
+        compile.exclude module: 'netty-transport'
+    }
+
+    sourceSets {
+        test {
+            java {
+                srcDirs 'src/test/perf'
+            }
+        }
+    }
+
+    jar {
+        enabled true
+        group project.group
+        archiveBaseName.value project.name
+        archiveVersion.value project.release ? "${project.version}" : "${project.version}-SNAPSHOT"
+    }
+
+    bootJar {
+        enabled false
+        group jar.group
+        archiveBaseName.value jar.archiveBaseName
+        archiveVersion.value jar.archiveVersion
+        archiveClassifier.value 'exec'
+    }
+
+    test {
+        useJUnitPlatform()
+    }
+
+    apply plugin: 'maven-publish'
+
+    task sourceJar(type: Jar) {
+        from sourceSets.main.allJava
+        group jar.group
+        archiveBaseName.value jar.archiveBaseName
+        archiveVersion.value jar.archiveVersion
+        archiveClassifier.value 'sources'
+    }
+
+    publishing {
+        publications {
+            mavenJava(MavenPublication) {
+                groupId = jar.group
+                artifactId = jar.archiveBaseName.get()
+                version = jar.archiveVersion.get()
+                //
+                from components.java
+                //
+                pom.withXml {
+                    asNode().appendNode('name', POM_NAME)
+                    asNode().appendNode('description', POM_DESCRIPTION)
+                    asNode().appendNode('url', POM_URL)
+                }
+                //
+                artifact sourceJar
+            }
+        }
+        repositories {
+            maven {
+                url project.release ? NEXUS_RELEASE_REPO_URL : NEXUS_SNAPSHOT_REPO_URL
+                credentials {
+                    username NEXUS_USERNAME
+                    password NEXUS_PASSWORD
+                }
+            }
+        }
+    }
+}

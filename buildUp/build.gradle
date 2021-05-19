@@ -1,0 +1,59 @@
+dependencies {
+    //框架alpha
+    api 'com.rrslj:alpha-spring:0.4.7'
+
+    //Spring-Boot
+    api 'org.springframework.boot:spring-boot-starter-web'
+    api 'org.springframework.boot:spring-boot-starter-data-redis'
+    api 'org.springframework.boot:spring-boot-starter-cache'
+    api 'org.springframework.boot:spring-boot-starter-amqp'
+    api 'org.springframework.boot:spring-boot-starter-mail'
+    api 'org.springframework.boot:spring-boot-starter-websocket'
+    //Spring-Cloud
+    api 'org.springframework.cloud:spring-cloud-starter-loadbalancer'
+    api 'org.springframework.cloud:spring-cloud-starter-openfeign'
+    //数据库
+    api "mysql:mysql-connector-java:$mysqlVersion"
+    api "com.alibaba:druid:$druidVersion"
+    api "com.baomidou:mybatis-plus-boot-starter:$mybatisPlusBootStarterVersion"
+    //阿里云
+    api 'com.aliyun:aliyun-java-sdk-core:4.4.6'
+
+    api "com.github.xiaoymin:knife4j-spring-boot-starter:$knife4jSpringBootStarterVersion"
+    //==运行时==
+    runtimeOnly 'org.springframework.boot:spring-boot-devtools'
+}
+
+bootJar {
+    enabled = true
+}
+
+sourceSets {
+    main {
+        java {
+            srcDir 'src/main/java'
+        }
+        resources {
+            srcDirs 'src/main/java'
+        }
+    }
+}
+
+processResources {
+    filesMatching('application.properties') {
+        expand(project.properties)
+    }
+}
+
+apply plugin: 'com.palantir.docker'
+
+docker {
+    name "${project.dockerImageName}:${project.dockerImageTag}"
+    files '../.docker/Dockerfile', bootJar.archiveFile
+    buildArgs(['GROUP'  : project.group.toString(),
+               'NAME'   : project.name,
+               'VERSION': project.version.toString(),
+               'COMMIT' : project.commit,
+               'RELEASE': project.release,
+               'JAR'    : bootJar.archiveFileName.get()])
+}
